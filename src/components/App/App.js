@@ -3,32 +3,24 @@ import mapboxgl from "mapbox-gl";
 import { mapboxToken } from '../../tokens';
 import classes from './App.module.scss';
 import { countryCodes } from '../../helpers/countryCodes';
+import { filterDuplicatesByKey } from '../../helpers/filters';
 
 mapboxgl.accessToken = mapboxToken;
 
 const App = () => {
     const mapboxElement = useRef(null);
     const [countries, setCountries] = useState([]);
-
-    const getColor = () => {
-        var color1 = 'fc6629';
-        var color2 = 'e60000';
-        var ratio = 1;
-        var hex = function(x) {
-            x = x.toString(16);
-            return (x.length === 1) ? '0' + x : x;
-        };
-        const res = [color1];
-
-        while (ratio > 0) {
-            ratio = ratio - 0.25;
-            var r = Math.ceil(parseInt(color1.substring(0,2), 16) * ratio + parseInt(color2.substring(0,2), 16) * (1-ratio));
-            var g = Math.ceil(parseInt(color1.substring(2,4), 16) * ratio + parseInt(color2.substring(2,4), 16) * (1-ratio));
-            var b = Math.ceil(parseInt(color1.substring(4,6), 16) * ratio + parseInt(color2.substring(4,6), 16) * (1-ratio));
-            res.push(hex(r) + hex(g) + hex(b));
-        }
-        return res;
-    }
+    const hoveredCountry = useRef(null);
+    const vC = {
+        0: '639c63',
+        1: 'f8b369',
+        1000: 'ed9658',
+        5000: 'e27847',
+        10000: 'd75a35',
+        50000: 'cc3c24',
+        100000: 'b60303',
+        500000: '8f031c'
+    };
 
     useEffect(() => {
         fetch('https://api.thevirustracker.com/free-api?countryTotals=ALL')
@@ -38,73 +30,54 @@ const App = () => {
                 if (countryitems.length && countryitems[0].stat === 'ok') {
                     const countryIdx = Object.keys(countryitems[0]);
                     const countryArr = countryIdx.reduce((list,countryId) => {
-                        console.log(countryId);
                         if (countryId !== 'stat'
-                            && countryitems[0][countryId].total_cases
                             && countryCodes[countryitems[0][countryId].code]
                         ) {
                             list.push({
                                 ...countryitems[0][countryId],
                                 'ISO_A3': countryCodes[countryitems[0][countryId].code]
-                            })
+                            });
                         }
                         return list;
                     }, []);
-                    console.log(countryArr);
-                    setCountries(countryArr);
+                    setCountries(filterDuplicatesByKey(countryArr, 'ISO_A3'));
                 }
             });
     }, []);
 
     useEffect(() => {
-        console.log(countries.length)
         if (!countries.length) {
             return;
         }
         const map = new mapboxgl.Map({
             container: mapboxElement.current,
-            // style: 'mapbox://styles/yuittti/ck8sw2j7a1ft81ilh7ntdg0v6',
-            style: 'mapbox://styles/mapbox/dark-v10',
+            style: 'mapbox://styles/yuittti/ck8yjfxca18i71iqaow1sik4z',
+            // style: 'mapbox://styles/mapbox/dark-v10',
             center: [16, 27], // initial geo location
             zoom: 2,
             minZoom: 2,
             maxZoom: 5
         });
         map.addControl(new mapboxgl.NavigationControl());
-
-        const values = countries.map(dataItem => dataItem.total_cases);
-        const maxValue = Math.max(...values);
-        const minValue = Math.min(...values);
-        const interval = parseInt((maxValue - minValue) / 5);
-        const valueColors = {};
-        const colors = getColor();
-        let accum = interval;
-
-        for (let i = 1; i < 4; i++) {
-            accum = accum + interval;
-            valueColors[accum] = colors[i];
-        };
-        valueColors[interval] = colors[0];
-        valueColors[maxValue] = colors[4];
+        
 
         map.on('load', function () {
             map.addSource('countries', {
                 type: 'vector',
                 url: 'mapbox://yuittti.36vzllug',
-                data: {
-                    type: "FeatureCollection",
-                    features: countries
-                  }
             });
 
             var expression = ['match', ['get', 'ISO_A3']];
             var outlineExpression = ['match', ['get', 'ISO_A3']];
             countries.forEach((row) => {
-                const colors = Object.keys(valueColors);
-                const value = colors.find(col => row['total_cases'] <= col);
-                const color = `#${valueColors[value]}`;
+                const colors = Object.keys(vC);
+                const value = colors.find((col, idx, arr) => {
+                    return row['total_cases'] >= col
+                        && (idx+1 === arr.length || row['total_cases'] < arr[idx+1])
+                });
+                const color = `#${vC[value]}`;
                 expression.push(row.ISO_A3, color);
-                outlineExpression.push(row.ISO_A3, 'white');
+                outlineExpression.push(row.ISO_A3, '#000');
             });
             expression.push('rgba(0,0,0,0)');
             outlineExpression.push('rgba(0,0,0,0)');
@@ -121,13 +94,68 @@ const App = () => {
                 "source": "countries",
                 "source-layer": "countries-0ortkb",
             }, 'waterway-label');
-        });
-    }, [countries]);
 
-    const colors = getColor();
+            map.on('mousemove', 'maine', function(e) {
+                if (!e.features ||
+                    !e.features.length ||
+                    !e.features[0].properties ||
+                    !e.features[0].properties.ISO_A3 ||
+                    e.features[0].properties.ISO_A3 === hoveredCountry.current
+                ) {
+                    return;
+                }
+                if (map.getLayer(hoveredCountry.current)) {
+                    map.removeLayer(hoveredCountry.current);
+                }
+                hoveredCountry.current = e.features[0].properties.ISO_A3;
+
+                var expression = ['match', ['get', 'ISO_A3']];
+                var expression1 = ['match', ['get', 'ISO_A3']];
+                var expression2 = ['match', ['get', 'ISO_A3']];
+                countries.forEach((row) => {
+                    if (row.ISO_A3 === e.features[0].properties.ISO_A3) {
+                        expression.push(row.ISO_A3, 3);
+                        expression1.push(row.ISO_A3, '#eee');
+                        expression2.push(row.ISO_A3, 1);
+                    } else {
+                        expression.push(row.ISO_A3, 0);
+                        expression1.push(row.ISO_A3, 'black');
+                        expression2.push(row.ISO_A3, 0);
+                    }
+                });
+                expression.push(0);
+                expression1.push('rgba(0,0,0,0)');
+                expression2.push(0);
+
+                map.addLayer({
+                    id: e.features[0].properties.ISO_A3,
+                    source: 'countries',
+                    "source-layer": "countries-0ortkb",
+                    'type': 'line',
+                    'paint': {
+                        'line-width': expression,
+                        'line-color': expression1,
+                        'line-blur': expression2
+                    },
+                    "transition": {
+                        "duration": 300,
+                        "delay": 0
+                      }
+                }, 'waterway-label');
+            });
+
+            map.on('mouseleave', 'maine', function(e) {
+                if (map.getLayer(hoveredCountry.current)) {
+                    map.removeLayer(hoveredCountry.current);
+                }
+                hoveredCountry.current = null;
+            });
+        });
+    });
+
     return (
         <div>
-            {colors.map(color => <div style={{backgroundColor: `#${color}`}}>{color}</div>)}
+            {Object.values(vC).map(color => <div style={{backgroundColor: `#${color}`}}>{color}</div>)}
             <div className={classes.mapContainer}>
                 <div className={classes.mapBox} ref={ mapboxElement }></div>
             </div>
