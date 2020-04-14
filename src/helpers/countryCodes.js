@@ -7,7 +7,6 @@ export const countryCodes = {
     AL: "ALB",
     AM: "ARM",
     AO: "AGO",
-    AQ: "ATA",
     AR: "ARG",
     AS: "ASM",
     AT: "AUT",
