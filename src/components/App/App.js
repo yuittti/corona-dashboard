@@ -10,9 +10,10 @@ mapboxgl.accessToken = mapboxToken;
 const App = () => {
     const mapboxElement = useRef(null);
     const [countries, setCountries] = useState([]);
-    const [selectedCountry, setSelectedCountry] = useState(null);
-    const mapLayers = useRef(null);
-    const mapPopup = useRef(null);
+    const [userLocation, setUserLocation] = useState(null);
+    // const [selectedCountry, setSelectedCountry] = useState(null);
+    // const mapLayers = useRef(null);
+    // const mapPopup = useRef(null);
     const hoveredCountry = useRef(null);
     const vC = {
         0: '639c63',
@@ -24,6 +25,49 @@ const App = () => {
         100000: 'b60303',
         500000: '8f031c'
     };
+
+    const getGeoByIp = async () => {
+        return await fetch('http://ip-api.com/json')
+            .then(resp => resp.json())
+            .then(resp => {
+                console.log(resp);
+                return resp.countryCode
+            });
+    }
+
+    // const getGeo = async () => {
+    //     // const geo = [];
+
+    //     if ("geolocation" in navigator) {
+    //         navigator.geolocation.getCurrentPosition(
+    //             (position) => {
+    //                 if (position && position.coords) {
+    //                     return {
+    //                         lat: position.coords.latitude,
+    //                         lon: position.coords.longitude
+    //                     };
+    //                 }
+    //             },
+    //             (error) => {
+    //                 if (error) {
+    //                     getGeoByIp().then(resp => {
+    //                         return {
+    //                             lat: resp[0],
+    //                             lon: resp[1]
+    //                         };
+    //                     });
+    //                 }
+    //             }
+    //         );
+    //     } else {
+    //         getGeoByIp().then(resp => {
+    //             return {
+    //                 lat: resp[0],
+    //                 lon: resp[1]
+    //             };
+    //         });
+    //     }
+    // };
 
     // useEffect(() => {
     //     fetch('https://api.thevirustracker.com/free-api?countryTotals=ALL')
@@ -50,6 +94,7 @@ const App = () => {
     // }, []);
 
     useEffect(() => {
+        // getGeo();
         fetch('https://corona.lmao.ninja/v2/countries')
             .then(resp => resp.json())
             .then(countries => {
@@ -62,166 +107,236 @@ const App = () => {
                     countryList.push({
                         ...countryFromApi,
                         ISO_A3: countryCodes[countryCode],
-                        cases: countryFromApi ? countryFromApi.cases : 0
+                        cases: countryFromApi ? countryFromApi.cases : 0,
+                        deaths: countryFromApi ? countryFromApi.deaths : 0,
+                        recovered: countryFromApi ? countryFromApi.recovered : 0,
                     });
                 }
                 setCountries(countryList);
             });
     }, [])
 
+    const getGeo = async () => {
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    if (position && position.coords) {
+                        return {
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude
+                        };
+                    }
+                },
+                async (error) => {
+                    if (error) {
+                        return await getGeoByIp();
+                    }
+                }
+            );
+        } else {
+            getGeoByIp().then(resp => {
+                return [...resp];
+            });
+        }
+    };
+
     useEffect(() => {
         if (!countries.length) {
             return;
         }
-        const map = new mapboxgl.Map({
-            container: mapboxElement.current,
-            style: 'mapbox://styles/yuittti/ck8yjfxca18i71iqaow1sik4z',
-            // style: 'mapbox://styles/mapbox/dark-v10',
-            center: [16, 27], // initial geo location
-            zoom: 2,
-            minZoom: 2,
-            maxZoom: 5,
-            "transition": {
-                "duration": 300,
-                "delay": 0
-              }
-        });
-        map.addControl(new mapboxgl.NavigationControl());
-        
 
-        map.on('load', function () {
-            map.addSource('countries', {
-                type: 'vector',
-                url: 'mapbox://yuittti.36vzllug',
+        let map;
+        getGeoByIp().then(resp => {
+            const country1 = countries.find(country => (country.countryInfo || {}).iso2 === resp);
+            map = new mapboxgl.Map({
+                container: mapboxElement.current,
+                style: 'mapbox://styles/yuittti/ck91e615p13x61itjj0wlppjn',
+                center: [country1.countryInfo.long, country1.countryInfo.lat],
+                zoom: 3,
+                minZoom: 2,
+                maxZoom: 5,
             });
-
-            var expression = ['match', ['get', 'ISO_A3']];
-            var outlineExpression = ['match', ['get', 'ISO_A3']];
-            countries.forEach((row) => {
-                const colors = Object.keys(vC);
-                const value = colors.find((col, idx, arr) => {
-                    return row['cases'] >= col
-                        && (idx+1 === arr.length || row['cases'] < arr[idx+1])
+            map.addControl(new mapboxgl.NavigationControl());
+            map.on('load', function () {
+                map.addSource('countries', {
+                    type: 'vector',
+                    url: 'mapbox://yuittti.36vzllug',
                 });
-                const color = `#${vC[value]}`;
-                expression.push(row.ISO_A3, color);
-                outlineExpression.push(row.ISO_A3, '#000');
-            });
-            expression.push('rgba(0,0,0,0)');
-            outlineExpression.push('rgba(0,0,0,0)');
-            // console.log(expression);
-            map.addLayer({
-                'id': 'maine',
-                'type': 'fill',
-                'layout': {},
-                'paint': {
-                    'fill-outline-color': outlineExpression,
-                    'fill-color': expression,
-                    'fill-opacity': 1,
-                },
-                "source": "countries",
-                "source-layer": "countries-0ortkb",
-            }, 'waterway-label');
-
-            map.addLayer({
-                id: 'borders',
-                source: 'countries',
-                "source-layer": "countries-0ortkb",
-                'type': 'line',
-                'paint': {
-                    'line-width': 0,
-                    'line-color': 'rgba(0,0,0,0)',
-                    'line-blur': 0
-                },
-            }, 'waterway-label');
-
-            map.on('mousemove', 'maine', function(e) {
-                console.log(e);
-                map.getCanvas().style.cursor = 'pointer';
-                if (!e.features ||
-                    !e.features.length ||
-                    !e.features[0].properties ||
-                    !e.features[0].properties.ISO_A3 ||
-                    e.features[0].properties.ISO_A3 === hoveredCountry.current
-                ) {
-                    return;
-                }
-                
-                if (mapPopup.current) {
-                    mapPopup.current.remove();
-                }
-                hoveredCountry.current = e.features[0].properties.ISO_A3;
-
+    
                 var expression = ['match', ['get', 'ISO_A3']];
-                var expression1 = ['match', ['get', 'ISO_A3']];
-                var expression2 = ['match', ['get', 'ISO_A3']];
+                var outlineExpression = ['match', ['get', 'ISO_A3']];
                 countries.forEach((row) => {
-                    if (row.ISO_A3 === e.features[0].properties.ISO_A3) {
-                        expression.push(row.ISO_A3, 3);
-                        expression1.push(row.ISO_A3, '#eee');
-                        expression2.push(row.ISO_A3, 1);
-                    } else {
-                        expression.push(row.ISO_A3, 0);
-                        expression1.push(row.ISO_A3, 'black');
-                        expression2.push(row.ISO_A3, 0);
-                    }
+                    const colors = Object.keys(vC);
+                    const value = colors.find((col, idx, arr) => {
+                        return row['cases'] >= col
+                            && (idx+1 === arr.length || row['cases'] < arr[idx+1])
+                    });
+                    const color = `#${vC[value]}`;
+                    expression.push(row.ISO_A3, color);
+                    outlineExpression.push(row.ISO_A3, '#000');
                 });
-                expression.push(0);
-                expression1.push('rgba(0,0,0,0)');
-                expression2.push(0);
-
-                map.setPaintProperty('borders', 'line-width', expression);
-                map.setPaintProperty('borders', 'line-color', expression1);
-                map.setPaintProperty('borders', 'line-blur', expression2);
-
-                const countryId = e.features[0].properties.ISO_A3;
-                const selectedCountry1 = countries.find(country => countryId === country.ISO_A3);
-
-                const htmlContent = `
-                    <div>Country: ${selectedCountry1.country}</div>
-                    <div style='color: red;'>Total: ${selectedCountry1.cases}</div>
-                `;
-                const popup = new mapboxgl.Popup({className: `${classes.title}`})
-                    .setLngLat(e.lngLat)
-                    .setHTML(htmlContent)
-                    .addTo(map);
-
-                mapPopup.current = popup;
-            });
-
-            map.on('mouseleave', 'maine', function(e) {
-                map.getCanvas().style.cursor = '';
-                if (map.getLayer(hoveredCountry.current)) {
-                    map.setLayoutProperty(hoveredCountry.current, 'visibility', 'none');
-                }
-                if (mapPopup.current) {
-                    mapPopup.current.remove();
-                }
-                hoveredCountry.current = null;
-                setSelectedCountry(null);
+                expression.push('rgba(0,0,0,0)');
+                outlineExpression.push('rgba(0,0,0,0)');
+                // console.log(expression);
+                map.addLayer({
+                    'id': 'maine',
+                    'type': 'fill',
+                    'layout': {},
+                    'paint': {
+                        'fill-outline-color': outlineExpression,
+                        'fill-color': expression,
+                        'fill-opacity': 1,
+                    },
+                    "source": "countries",
+                    "source-layer": "countries-0ortkb",
+                }, 'waterway-label');
+    
+                map.addLayer({
+                    id: 'borders',
+                    source: 'countries',
+                    "source-layer": "countries-0ortkb",
+                    'type': 'line',
+                    'paint': {
+                        'line-width': 0,
+                        'line-color': 'rgba(0,0,0,0)',
+                        'line-blur': 0
+                    },
+                }, 'waterway-label');
+    
+                const popupOptions = {
+                    closeButton: false,
+                    className: `${classes.mapTooltip}`
+                };
+    
+                const mapPopup = new mapboxgl.Popup(popupOptions);
+    
+                map.on('mousemove', 'maine', function(e) {
+                    console.log(e.features[0]);
+                    map.getCanvas().style.cursor = 'pointer';
+                    if (!e.features ||
+                        !e.features.length ||
+                        !e.features[0].properties ||
+                        !e.features[0].properties.ISO_A3 ||
+                        e.features[0].properties.ISO_A3 === hoveredCountry.current
+                    ) {
+                        return;
+                    }
+                    
+                    if (mapPopup) {
+                        mapPopup.remove();
+                    }
+                    hoveredCountry.current = e.features[0].properties.ISO_A3;
+    
+                    var expression = ['match', ['get', 'ISO_A3']];
+                    var expression1 = ['match', ['get', 'ISO_A3']];
+                    var expression2 = ['match', ['get', 'ISO_A3']];
+                    countries.forEach((row) => {
+                        if (row.ISO_A3 === e.features[0].properties.ISO_A3) {
+                            expression.push(row.ISO_A3, 3);
+                            expression1.push(row.ISO_A3, '#eee');
+                            expression2.push(row.ISO_A3, 1);
+                        } else {
+                            expression.push(row.ISO_A3, 0);
+                            expression1.push(row.ISO_A3, 'black');
+                            expression2.push(row.ISO_A3, 0);
+                        }
+                    });
+                    expression.push(0);
+                    expression1.push('rgba(0,0,0,0)');
+                    expression2.push(0);
+    
+                    map.setPaintProperty('borders', 'line-width', expression);
+                    map.setPaintProperty('borders', 'line-color', expression1);
+                    map.setPaintProperty('borders', 'line-blur', expression2);
+    
+                    const countryId = e.features[0].properties.ISO_A3;
+                    const selectedCountry1 = countries.find(country => countryId === country.ISO_A3) || {
+                        country: e.features[0].properties.ADMIN,
+                        cases: 'N/A',
+                        deaths: 'N/A',
+                        recovered: 'N/A'
+                    };
+                    
+                    const titleStyles = `
+                        font-size: 15px;
+                        font-weight: 500;
+                        margin-bottom: 3px;
+                    `;
+    
+                    const htmlContent = `
+                        <div style='${titleStyles}'>
+                            ${selectedCountry1.country || e.features[0].properties.ADMIN}
+                        </div>
+                        <div style='color: #623801;'>
+                            Total cases: ${selectedCountry1.cases.toLocaleString()}
+                        </div>
+                        <div style='color: #cb1212;'>
+                            Deaths: ${selectedCountry1.deaths.toLocaleString()}
+                        </div>
+                        <div style='color: #277f26;'>
+                            Recovered: ${selectedCountry1.recovered.toLocaleString()}
+                        </div>
+                    `;
+    
+                    mapPopup
+                        .setLngLat(e.lngLat)
+                        .setHTML(htmlContent)
+                        .addTo(map);
+                });
+    
+                map.on('mouseleave', 'maine', function(e) {
+                    map.getCanvas().style.cursor = '';
+                    map.setPaintProperty('borders', 'line-width', 0);
+                    map.setPaintProperty('borders', 'line-color', 'rgba(0,0,0,0)');
+                    map.setPaintProperty('borders', 'line-blur', 0);
+                    if (mapPopup) {
+                        mapPopup.remove();
+                    }
+                    hoveredCountry.current = null;
+                    // setSelectedCountry(null);
+                });
             });
         });
-    });
+    }, [countries]);
 
-    const renderMapTooltip = () => {
-        if (!hoveredCountry.current) {
-            return null;
-        }
-        const selectedCountry = countries.filter(country => hoveredCountry.current === country.ISO_A3);
+    const renderMapLegend = () => {
+        const getValue = (value, idx, arr) => {
+            if (idx === 0) {
+                return value;
+            } else if (idx === arr.length - 1) {
+                return `> ${Number(value).toLocaleString()}`;
+            } else {
+                return `${Number(value).toLocaleString()} - ${Number(arr[idx + 1]).toLocaleString()}`;
+            }
+        };
         return (
-            <div className={classes.mapInfo}>
-                Country: {selectedCountry.country}
+            <div className={classes.mapLegend}>
+                {Object.keys(vC).map((value, idx, arr) => {
+                    return (
+                        <div className={classes.mapLegendItem}>
+                            <div
+                                className={classes.mapLegendColor}
+                                style={{
+                                    backgroundColor: `#${vC[value]}`
+                                }}
+                            />
+                            <div className={classes.mapLegendValue}>
+                                {getValue(value, idx, arr)}
+                            </div>
+                        </div>
+                    )
+                })}
             </div>
         );
     };
 
     return (
         <div>
-            {Object.values(vC).map(color => <div style={{backgroundColor: `#${color}`}}>{color}</div>)}
             <div className={classes.mapContainer}>
                 <div className={classes.mapBox} ref={ mapboxElement }></div>
+                {renderMapLegend()}
             </div>
-            {/* {renderMapTooltip()} */}
+            
         </div>
     );
 };

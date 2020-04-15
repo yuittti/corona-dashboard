@@ -246,5 +246,6 @@ export const countryCodes = {
     YT: "MYT",
     ZA: "ZAF",
     ZM: "ZMB",
-    ZW: "ZWE"
+    ZW: "ZWE",
+    XK: "XKX"
 };
