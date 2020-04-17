@@ -4,6 +4,7 @@ import { mapboxToken } from '../../tokens';
 import classes from './App.module.scss';
 import { countryCodes } from '../../helpers/countryCodes';
 import { filterDuplicatesByKey } from '../../helpers/filters';
+import CountryList from '../CountryList';
 
 mapboxgl.accessToken = mapboxToken;
 
@@ -331,7 +332,10 @@ const App = () => {
     };
 
     return (
-        <div>
+        <div className={classes.container}>
+            <div className={classes.leftSidebar}>
+                <CountryList countries={countries} />
+            </div>
             <div className={classes.mapContainer}>
                 <div className={classes.mapBox} ref={ mapboxElement }></div>
                 {renderMapLegend()}
